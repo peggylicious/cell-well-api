@@ -20,4 +20,13 @@ process.on("unhandledRejection", err => {
     console.log(`An error occurred: ${err.message}`)
     server.close(() => process.exit(1))
   })
-
+// error handler middleware
+app.use((error, req, res, next) => {
+    console.log(error)
+      res.status(error.status || 500).json({
+        // error: {
+          status: error.status || 500,
+          message: error.message || 'Internal Server Error',
+        // },
+      });
+    });

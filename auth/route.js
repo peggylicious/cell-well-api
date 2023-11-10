@@ -4,10 +4,11 @@ const express = require("express");
 const { register, login, update, deleteUser } = require("./auth");
 // const bcrypt = require("bcrypt");
 // var jwt = require("jsonwebtoken");
+const adminGuard = require('../middleware/admin-auth')
 const router = express.Router({ mergeParams: true });
 router.post("/register", register);
 router.post("/login", login);
 router.put("/update", update);
-router.delete("/delete-user", deleteUser);
+router.delete("/delete-user", adminGuard, deleteUser);
 
 module.exports = router
