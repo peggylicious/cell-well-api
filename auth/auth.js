@@ -9,54 +9,51 @@ const {v4: uuidv4} = require('uuid');
 // const { GoogleApis } = require("googleapis");
 const { google } = require('googleapis');
 const OAuth2 = google.auth.OAuth2;
+const otpGenerator = require('otp-generator');
 
-// const sendMail = (to, subject, message) =>{
-//     const transporter = nodemailer.createTransport({
-//         // host: "smtp-mail.outlook.com",
-//         // port: 587,
-//         // secure: false, // STARTTLS
 
-//         service: 'gmail',
-//         // host: "smtp-mail.outlook.com",
-//         // port: 587,
-//         // tls: {
-//         //     ciphers: "SSLv3",
-//         //     rejectUnauthorized: false,
-//         // },
-//         auth : {
-//             user : process.env.EMAIL_FROM,
-//             pass : process.env.EMAIL_PASSWORD
-//         }
-//     })
-
-//     const options = {
-//         from : process.env.EMAIL_FROM, 
-//         to, 
-//         subject, 
-//         text: message,
-//     }
-
-//     transporter.sendMail(options, (error, info) =>{
-//         if(error) console.log(error)
-//         else console.log(info)
-//     })
-
-// }
-const sendMail = async () => {
+const sendMail = async (otp) => {
     try {
       const mailOptions = {
-        from: process.env.USER_EMAIL,
-        to: 'p.asq@live.com',
-        subject: "Test",
-        text: "Hi, this is a test email",
-      }
+            from: process.env.USER_EMAIL,
+            to: 'p.asq@live.com',
+            subject: "Test",
+            html: `<p>Your otp from cell-well <b>${otp}</b></p>`
+        }
  
       let emailTransporter = await createTransporter();
       await emailTransporter.sendMail(mailOptions);
     } catch (err) {
       console.log("ERROR: ", err)
     }
-  };
+};
+
+const sendOtpVerification = async ({_id}, res) => {
+
+    console.log(_id)
+    try {
+        const otp = otpGenerator.generate(6, { upperCaseAlphabets: false, specialChars: false });
+        const hashedOtp  = await bcrypt.hash(otp, 10);
+        const newUserToken = await new UserVerification({
+            userId: _id,
+            uniqueString: hashedOtp,
+            createdAt: new Date(),
+            expiresAt: new Date() + 3600000
+        })
+        await newUserToken.save() // Send mail to DB
+        await sendMail(otp) // Send mail to user
+        res.json({
+            status: 'PENDING',
+            message: 'Otp verification sent',
+            data: {
+                userId: _id,
+            }
+        })
+    }catch(err){
+        console.log(err)
+        res.json({err})
+    }
+}
  
 const createTransporter = async () => {
     try {
@@ -95,8 +92,7 @@ const createTransporter = async () => {
     } catch (err) {
       return err
     }
-  };
-  sendMail()
+};
 
 // Register
 exports.register = async (req, res, next) => {
@@ -195,51 +191,67 @@ exports.login = async (req, res, next) => {
 
 exports.resetPassword = async (req, res, next) => {
     const { email } = req.body
-    // Check if username and password is provided
-    // if (!username || !password) {
-    //     return res.status(400).json({
-    //         message: "Username or Password not present",
-    //     })
-    // }
 
-    // try {
-    //     const user = await User.findOne({ email })
-    //     if (!user) {
-    //       res.status(400).json({
-    //         message: "Password reset not successful",
-    //         error: "User not found",
-    //       })
-    //     } else {
-    //       // comparing given password with hashed password
-    //     //   bcrypt.compare(password, user.password).then(function (result) {
-    //     //     if(result) {
-    //     //         const maxAge = 6*60*60;
-    //     //         const token = jwt.sign({id: user._id, username, role: user.role}, jwtSecret, {expiresIn: maxAge})
-    //     //         res.status(200).json({
-    //     //             message: "Login successful",
-    //     //             user,
-    //     //             access_token: token
-    //     //         })
-    //     //     } else {
-    //     //         res.status(400).json({ message: "Login not succesful" })
-    //     //     }
-    //     //     // result
-    //     //     //   ? res.status(200).json({
-    //     //     //       message: "Login successful",
-    //     //     //       user,
-    //     //     //       access_token: token
-    //     //     //     })
-    //     //     //   : res.status(400).json({ message: "Login not succesful" })
-    //     //   })
-    //         sendMail('aashish@mozej.com', 'Thank you!', 'Thank you so much for sticking with me');
-    //     }
-    //   } catch (error) {
-    //     res.status(400).json({
-    //       message: "An error occurred",
-    //       error: error.message,
-    //     })
-    //   }
-    sendMail('aashish@mozej.com', 'Thank you!', 'Thank you so much for sticking with me');
+    try {
+        const user = await User.findOne({ email })
+        if (!user) {
+            // Generate OTP
+            // Send OTP to email
+            sendMail();
+
+          res.status(400).json({
+            message: "Password reset not successful",
+            error: "User not found",
+          })
+        } else {
+            sendOtpVerification(user, res)
+            // console.log(user)
+            // const newUserToken = new UserVerification({
+            //     userId: user._id,
+            //     uniqueString: 'xxx',
+            //     createdAt: new Date(),
+            //     expiresAt: ''
+            // })
+            // // UserVerification.create({uniqueString: 'xxx'})
+            // newUserToken.save().then(x => {
+            //     res.status(200).json({
+            //                     message: "Password reset successful",
+            //                 })
+            // }).catch((err) => {
+            //     res.status(500).json(err);
+            //   });
+            // sendMail().then(res => {
+            //     alert('A token has been sent to your account')
+            // })
+          // comparing given password with hashed password
+        //   bcrypt.compare(password, user.password).then(function (result) {
+        //     if(result) {
+        //         const maxAge = 6*60*60;
+        //         const token = jwt.sign({id: user._id, username, role: user.role}, jwtSecret, {expiresIn: maxAge})
+        //         res.status(200).json({
+        //             message: "Login successful",
+        //             user,
+        //             access_token: token
+        //         })
+        //     } else {
+        //         res.status(400).json({ message: "Login not succesful" })
+        //     }
+        //     // result
+        //     //   ? res.status(200).json({
+        //     //       message: "Login successful",
+        //     //       user,
+        //     //       access_token: token
+        //     //     })
+        //     //   : res.status(400).json({ message: "Login not succesful" })
+        //   })
+            // sendMail('aashish@mozej.com', 'Thank you!', 'Thank you so much for sticking with me');
+        }
+      } catch (error) {
+        res.status(400).json({
+          message: "An error occurred",
+          error: error.message,
+        })
+      }
 
 }
 //auth.js
