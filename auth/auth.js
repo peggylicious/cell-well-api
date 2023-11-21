@@ -12,11 +12,12 @@ const OAuth2 = google.auth.OAuth2;
 const otpGenerator = require('otp-generator');
 
 
-const sendMail = async (otp) => {
+
+const sendMail = async (otp, email) => {
     try {
       const mailOptions = {
             from: process.env.USER_EMAIL,
-            to: 'p.asq@live.com',
+            to: email,
             subject: "Test",
             html: `<p>Your otp from cell-well <b>${otp}</b></p>`
         }
@@ -28,9 +29,9 @@ const sendMail = async (otp) => {
     }
 };
 
-const sendOtpVerification = async ({_id}, res) => {
+const sendOtpVerification = async ({_id, email}, res) => {
 
-    console.log(_id)
+    console.log(_id, email)
     try {
         const otp = otpGenerator.generate(6, { upperCaseAlphabets: false, specialChars: false });
         const hashedOtp  = await bcrypt.hash(otp, 10);
@@ -41,7 +42,7 @@ const sendOtpVerification = async ({_id}, res) => {
             expiresAt: new Date() + 3600000
         })
         await newUserToken.save() // Send mail to DB
-        await sendMail(otp) // Send mail to user
+        await sendMail(otp, email) // Send mail to user
         res.json({
             status: 'PENDING',
             message: 'Otp verification sent',
@@ -96,62 +97,58 @@ const createTransporter = async () => {
 
 // Register
 exports.register = async (req, res, next) => {
-    const { username, password } = req.body
+    const { username, email, password } = req.body
     if (password.length < 6) {
         return res.status(400).json({ message: "Password less than 6 characters" })
     }
-    bcrypt.hash(password, 10).then(async (hash) => {
-    await User.create({
-        username,
-        password: hash,
-      })
-        .then((user) =>{
-            const maxAge = 6*60*60;
-            const token = jwt.sign({id: user._id, username, role: user.role}, jwtSecret, {expiresIn: maxAge})
-            res.status(200).json({
-                message: "User successfully created",
-                user,
-                access_token: token
-            })
-        })
-        .catch((error) =>
+    try{
+        console.log('trying...')
+        const user = await User.findOne({ email })
+        if (user) {
           res.status(400).json({
-            message: "User not successful created",
-            error: error.message,
+            message: "User already exists",
+            error: "User lready exists",
           })
-        );
-        })
-    // try {
-    //     await User.create({
-    //         username,
-    //         password,
-    //     }).then(user =>
-    //         res.status(200).json({
-    //             message: "User successfully created",
-    //             user,
-    //         })
-    //     )
-    // } catch (err) {
-    //     res.status(401).json({
-    //         message: "User not successful created",
-    //         error: error.mesage,
-    //     })
-    // }
+        } else{
+            bcrypt.hash(password, 10).then(async (hash) => {
+                await User.create({
+                    username,
+                    email,
+                    password: hash,
+                })
+                .then((user) =>{
+                    const maxAge = 6*60*60;
+                    const token = jwt.sign({id: user._id, username, email, role: user.role}, jwtSecret, {expiresIn: maxAge})
+                    res.status(200).json({
+                        message: "User successfully created",
+                        user,
+                        access_token: token
+                    })
+                })
+            })
+        }
+    }catch(err){
+        res.status(400).json({
+            message: "User not successful created",
+            error: err.message,
+          })
+    }
+    
 }
 
 
 // Login
 exports.login = async (req, res, next) => {
-    const { username, password } = req.body
+    const { email, password } = req.body
     // Check if username and password is provided
-    if (!username || !password) {
+    if (!email || !password) {
         return res.status(400).json({
             message: "Username or Password not present",
         })
     }
 
     try {
-        const user = await User.findOne({ username })
+        const user = await User.findOne({ email })
         if (!user) {
           res.status(400).json({
             message: "Login not successful",
@@ -162,7 +159,7 @@ exports.login = async (req, res, next) => {
           bcrypt.compare(password, user.password).then(function (result) {
             if(result) {
                 const maxAge = 6*60*60;
-                const token = jwt.sign({id: user._id, username, role: user.role}, jwtSecret, {expiresIn: maxAge})
+                const token = jwt.sign({id: user._id, email, role: user.role}, jwtSecret, {expiresIn: maxAge})
                 res.status(200).json({
                     message: "Login successful",
                     user,
@@ -171,13 +168,6 @@ exports.login = async (req, res, next) => {
             } else {
                 res.status(400).json({ message: "Login not succesful" })
             }
-            // result
-            //   ? res.status(200).json({
-            //       message: "Login successful",
-            //       user,
-            //       access_token: token
-            //     })
-            //   : res.status(400).json({ message: "Login not succesful" })
           })
         }
       } catch (error) {
@@ -194,57 +184,19 @@ exports.resetPassword = async (req, res, next) => {
 
     try {
         const user = await User.findOne({ email })
+        console.log('User ', user)
         if (!user) {
-            // Generate OTP
-            // Send OTP to email
-            sendMail();
+            
+            // sendMail();
 
           res.status(400).json({
-            message: "Password reset not successful",
+            message: "User does not exist",
             error: "User not found",
           })
         } else {
+            // Generate OTP
+            // Send OTP to email
             sendOtpVerification(user, res)
-            // console.log(user)
-            // const newUserToken = new UserVerification({
-            //     userId: user._id,
-            //     uniqueString: 'xxx',
-            //     createdAt: new Date(),
-            //     expiresAt: ''
-            // })
-            // // UserVerification.create({uniqueString: 'xxx'})
-            // newUserToken.save().then(x => {
-            //     res.status(200).json({
-            //                     message: "Password reset successful",
-            //                 })
-            // }).catch((err) => {
-            //     res.status(500).json(err);
-            //   });
-            // sendMail().then(res => {
-            //     alert('A token has been sent to your account')
-            // })
-          // comparing given password with hashed password
-        //   bcrypt.compare(password, user.password).then(function (result) {
-        //     if(result) {
-        //         const maxAge = 6*60*60;
-        //         const token = jwt.sign({id: user._id, username, role: user.role}, jwtSecret, {expiresIn: maxAge})
-        //         res.status(200).json({
-        //             message: "Login successful",
-        //             user,
-        //             access_token: token
-        //         })
-        //     } else {
-        //         res.status(400).json({ message: "Login not succesful" })
-        //     }
-        //     // result
-        //     //   ? res.status(200).json({
-        //     //       message: "Login successful",
-        //     //       user,
-        //     //       access_token: token
-        //     //     })
-        //     //   : res.status(400).json({ message: "Login not succesful" })
-        //   })
-            // sendMail('aashish@mozej.com', 'Thank you!', 'Thank you so much for sticking with me');
         }
       } catch (error) {
         res.status(400).json({
@@ -253,6 +205,115 @@ exports.resetPassword = async (req, res, next) => {
         })
       }
 
+}
+
+exports.verifyOtp = async (req, res, next) => {
+    const { otp, userId } = req.body;
+    
+    try{
+        if(!otp){
+            res.status(400).json({
+                message: "Empty Otp",
+                error: "Empty Otp",
+              })   
+        }else {
+            // Get Otp from DB
+           const userOtpVerificationRecords = await UserVerification.findOne({userId})
+           console.log(userOtpVerificationRecords)
+
+           if(!userOtpVerificationRecords){
+                res.status(400).json({
+                    message: "Otp not found. Please signup or login.",
+                    error: "Otp not found. Please signup or login",
+                }) 
+           }
+           if(userOtpVerificationRecords.expiresAt < Date.now()){
+                await UserVerification.deleteMany({userId})
+                throw new Error('Otp has expired')
+           }
+            // Decode Otp
+            const verifiedOtp = await bcrypt.compare(otp, userOtpVerificationRecords.uniqueString);
+            if(!verifiedOtp){
+                throw new Error('You entered an incorrecct otp')
+            }else{
+                await UserVerification.deleteMany({userId})
+                res.status(200).json({
+                    message: "Email has been verified successfully.",
+                })   
+            }
+        }
+    }catch(err){
+        throw Error(err)
+    }
+}
+
+exports.updatePassword = async (req, res, next) => {
+    // User.updateOne({_id: userId}, {})
+    const { otp, userId, password, confirmPassword } = req.body;
+    
+    try{
+        if(!password || !confirmPassword){
+            // res.status(400).json({
+            //     message: "Password field is empty",
+            //     error: "Password field is empty",
+            //   })  
+        throw new Error('Password field is empty')
+
+        }
+        if(password !== confirmPassword){
+            // res.status(400).json({
+            //     message: "Password field mismatch",
+            //     error: "Password field mismatch",
+            //   })  
+        throw new Error('Password field mismatch')
+        }
+        if(!otp){
+            res.status(400).json({
+                message: "Empty Otp",
+                error: "Empty Otp",
+              })   
+        }else {
+            // Get user otp record from DB
+           const userOtpVerificationRecords = await UserVerification.findOne({userId})
+        //    console.log(userOtpVerificationRecords)
+
+           if(!userOtpVerificationRecords){ // Checks if otp record is found
+                // res.status(400).json({
+                //     message: "Otp not found. Please signup or login.",
+                //     error: ""Otp not found. Please signup or login.",
+                // }) ]
+                throw new Error('"Otp not found. Please signup or login.')
+           }
+          
+            // Decode Otp
+            const verifiedOtp = await bcrypt.compare(otp, userOtpVerificationRecords.uniqueString);
+            console.log('verifiedOtp', verifiedOtp)
+            if(!verifiedOtp){
+                throw new Error('You entered an incorrecct otp')
+            }else{
+                // Update password
+                if(userOtpVerificationRecords.expiresAt > Date.now()){ // Checks if otp is expired
+                    // await UserVerification.deleteMany({userId})
+                    throw new Error('Otp has expired')
+               }
+               const hashedPassword = await bcrypt.hash(password, 10)
+               console.log(hashedPassword)
+                await User.updateOne(
+                    { _id: userId },
+                    { $set: { password: hashedPassword } },
+                    { new: true }
+                  );
+                await UserVerification.deleteMany({userId})
+                res.status(200).json({
+                    message: "Email has been verified successfully.",
+                })   
+            }
+        }
+    }catch(err){
+        res.status(400).json({   
+                error: err.message,
+        }) 
+    }
 }
 //auth.js
 exports.update = async (req, res, next) => {
