@@ -12,7 +12,7 @@ const OAuth2 = google.auth.OAuth2;
 const otpGenerator = require('otp-generator');
 
 
-
+// Send Mail function in use
 const sendMail = async (otp, email) => {
     try {
       const mailOptions = {
@@ -35,13 +35,14 @@ const sendOtpVerification = async ({_id, email}, res) => {
     try {
         const otp = otpGenerator.generate(6, { upperCaseAlphabets: false, specialChars: false });
         const hashedOtp  = await bcrypt.hash(otp, 10);
+        const date = new Date()
         const newUserToken = await new UserVerification({
             userId: _id,
             uniqueString: hashedOtp,
             createdAt: new Date(),
-            expiresAt: new Date() + 3600000
+            expiresAt: date.setDate(date.getDate()+1)
         })
-        await newUserToken.save() // Send mail to DB
+        await newUserToken.save() // Save token to db
         await sendMail(otp, email) // Send mail to user
         res.json({
             status: 'PENDING',
@@ -115,15 +116,13 @@ exports.register = async (req, res, next) => {
                     username,
                     email,
                     password: hash,
+                    verified: false
                 })
-                .then((user) =>{
-                    const maxAge = 6*60*60;
-                    const token = jwt.sign({id: user._id, username, email, role: user.role}, jwtSecret, {expiresIn: maxAge})
-                    res.status(200).json({
-                        message: "User successfully created",
-                        user,
-                        access_token: token
-                    })
+                .then(result => {
+                    // Send verification Email
+                    console.log('Result', result)
+                    const userDetails = {_id: result._id, email}
+                    sendOtpVerification(userDetails, res)
                 })
             })
         }
@@ -208,7 +207,7 @@ exports.resetPassword = async (req, res, next) => {
 }
 
 exports.verifyOtp = async (req, res, next) => {
-    const { otp, userId } = req.body;
+    const { otp, userId, verified } = req.body;
     
     try{
         if(!otp){
@@ -219,15 +218,13 @@ exports.verifyOtp = async (req, res, next) => {
         }else {
             // Get Otp from DB
            const userOtpVerificationRecords = await UserVerification.findOne({userId})
-           console.log(userOtpVerificationRecords)
+           console.log(!userOtpVerificationRecords)
 
-           if(!userOtpVerificationRecords){
-                res.status(400).json({
-                    message: "Otp not found. Please signup or login.",
-                    error: "Otp not found. Please signup or login",
-                }) 
+           if(!userOtpVerificationRecords){ 
+                throw new Error('Otp not found. Please signup or login.')  
            }
-           if(userOtpVerificationRecords.expiresAt < Date.now()){
+           
+           if(userOtpVerificationRecords?.expiresAt < Date.now()){
                 await UserVerification.deleteMany({userId})
                 throw new Error('Otp has expired')
            }
@@ -237,9 +234,24 @@ exports.verifyOtp = async (req, res, next) => {
                 throw new Error('You entered an incorrecct otp')
             }else{
                 await UserVerification.deleteMany({userId})
-                res.status(200).json({
-                    message: "Email has been verified successfully.",
-                })   
+                if(!verified){
+                    const user = await User.findOne({ _id: userId });
+                    await User.updateOne({_id: userId}, {verified: true}) ;
+                    console.log(user)
+                    const maxAge = 6*60*60;
+                    const token = jwt.sign({id: user._id, username: user.username, email: user.email, role: user.role}, jwtSecret, {expiresIn: maxAge})
+                    res.status(200).json({
+                        message: "User successfully created",
+                        user,
+                        access_token: token
+                    })  
+                }
+                if(verified){
+                    res.status(200).json({
+                        message: "Email has been verified successfully.",
+                    })  
+                }
+                 
             }
         }
     }catch(err){

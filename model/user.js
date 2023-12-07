@@ -23,6 +23,10 @@ const UserSchema = new Mongoose.Schema({
     default: "Basic",
     required: true,
   },
+  verified: {
+    type: Boolean,
+    default: false,
+  }
 })
 
 const User = Mongoose.model("user", UserSchema)
