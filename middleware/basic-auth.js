@@ -32,6 +32,7 @@ module.exports = (req, res, next) => {
   if(decoded.role !== 'Basic'){
     return res.status(401).json({ message: "Only registered user is allowed" })
   }
-  req.userId = decoded.tid
+  req.userId = decoded._id
+  // req.email = de
   next();
 };

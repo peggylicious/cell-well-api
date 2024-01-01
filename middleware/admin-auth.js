@@ -43,9 +43,9 @@ module.exports = (req, res, next) => {
     err.stack = 401;
     throw err;
   }
-  if(decoded.role !== 'admin'){
+  if(decoded.role !== 'Admin'){
     return res.status(401).json({ message: "Only admin is authorized" })
   }
-  req.userId = decoded.tid
+  req.userId = decoded._id
   next();
 };
