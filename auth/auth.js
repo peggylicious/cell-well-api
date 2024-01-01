@@ -99,16 +99,16 @@ const createTransporter = async () => {
 // Register
 exports.register = async (req, res, next) => {
     const { username, email, password } = req.body
-    if (password.length < 6) {
-        return res.status(400).json({ message: "Password less than 6 characters" })
-    }
+    // if (password.length < 6) {
+    //     return res.status(400).json({ message: "Password less than 6 characters" })
+    // }
     try{
         console.log('trying...')
         const user = await User.findOne({ email })
         if (user) {
           res.status(400).json({
             message: "User already exists",
-            error: "User lready exists",
+            error: "User already exists",
           })
         } else{
             bcrypt.hash(password, 10).then(async (hash) => {
@@ -158,11 +158,13 @@ exports.login = async (req, res, next) => {
           bcrypt.compare(password, user.password).then(function (result) {
             if(result) {
                 const maxAge = 6*60*60;
-                const token = jwt.sign({id: user._id, email, role: user.role}, jwtSecret, {expiresIn: maxAge})
+                const token = jwt.sign({_id: user._id, email, role: user.role}, jwtSecret, {expiresIn: maxAge})
+                const loggedInUser = {_id: user._id, email, role: user.role};
                 res.status(200).json({
                     message: "Login successful",
-                    user,
-                    access_token: token
+                    loggedInUser,
+                    access_token: token,
+                    verified: user.verified
                 })
             } else {
                 res.status(400).json({ message: "Login not succesful" })
@@ -205,7 +207,34 @@ exports.resetPassword = async (req, res, next) => {
       }
 
 }
+exports.sendOtp = async (req, res, next) => {
+   const email = req.body.email
+    try{
+        console.log('trying...')
+        const user = await User.findOne({ email })
+        console.log(user)
+        if (user) {
+        //   res.status(400).json({
+        //     message: "User already exists",
+        //     error: "User lready exists",
+        //   })
+        console.log('If')
+        const userDetails = {_id: user._id, email}
+        sendOtpVerification(userDetails, res)
 
+        }else{
+            throw new Error('User does not exist')
+
+        }
+    }catch(err){
+        res.status(400).json({
+            // message: "User not successful created",
+            message: err.message,
+            error: err.message,
+          })
+    }
+    // sendOtpVerification(req.body.email, res)
+}
 exports.verifyOtp = async (req, res, next) => {
     const { otp, userId, verified } = req.body;
     
@@ -256,13 +285,18 @@ exports.verifyOtp = async (req, res, next) => {
         }
     }catch(err){
         throw Error(err)
+        // res.status(400).json({
+        //     // message: "User not successful created",
+        //     message: err.message,
+        //     error: err.message,
+        //   })
     }
 }
 
 exports.updatePassword = async (req, res, next) => {
     // User.updateOne({_id: userId}, {})
     const { otp, userId, password, confirmPassword } = req.body;
-    
+    console.log(otp)
     try{
         if(!password || !confirmPassword){
             // res.status(400).json({
@@ -287,7 +321,7 @@ exports.updatePassword = async (req, res, next) => {
         }else {
             // Get user otp record from DB
            const userOtpVerificationRecords = await UserVerification.findOne({userId})
-        //    console.log(userOtpVerificationRecords)
+           console.log('UV',userOtpVerificationRecords)
 
            if(!userOtpVerificationRecords){ // Checks if otp record is found
                 // res.status(400).json({
@@ -296,7 +330,7 @@ exports.updatePassword = async (req, res, next) => {
                 // }) ]
                 throw new Error('"Otp not found. Please signup or login.')
            }
-          
+           console.log(otp)
             // Decode Otp
             const verifiedOtp = await bcrypt.compare(otp, userOtpVerificationRecords.uniqueString);
             console.log('verifiedOtp', verifiedOtp)
@@ -304,7 +338,7 @@ exports.updatePassword = async (req, res, next) => {
                 throw new Error('You entered an incorrecct otp')
             }else{
                 // Update password
-                if(userOtpVerificationRecords.expiresAt > Date.now()){ // Checks if otp is expired
+                if(userOtpVerificationRecords.expiresAt < Date.now()){ // Checks if otp is expired
                     // await UserVerification.deleteMany({userId})
                     throw new Error('Otp has expired')
                }
@@ -317,7 +351,7 @@ exports.updatePassword = async (req, res, next) => {
                   );
                 await UserVerification.deleteMany({userId})
                 res.status(200).json({
-                    message: "Email has been verified successfully.",
+                    message: "Password has been updated successfully.",
                 })   
             }
         }
@@ -328,36 +362,63 @@ exports.updatePassword = async (req, res, next) => {
     }
 }
 //auth.js
-exports.update = async (req, res, next) => {
-    const { role, id } = req.body;
+exports.updateRole = async (req, res, next) => {
+    const { id, role } = req.body;
+    console.log(req.body)
     // First - Verifying if role and id is presnt
-    if (role && id) {
-        // Second - Verifying if the value of role is admin
-        if (role === "admin") {
-            // Finds the user with the id
-            await User.findById(id)
-                .then((user) => {
-                    // Third - Verifies the user is not an admin
-                    if (user.role !== "admin") {
-                        user.role = role;
-                        user.save().then((res) => {
-                            res.status("201").json({ message: "Update successful", user });
-                        }).catch(err => {
-                            res.status("400").json({ message: "An error occurred", error: err.message });
-                            process.exit(1);
-                        })
-                    } else {
-                        res.status(400).json({ message: "User is already an Admin" });
-                    }
-                })
-                .catch((error) => {
-                    res
-                        .status(400)
-                        .json({ message: "An error occurred", error: error.message });
-                });
+    // if (role && id) {
+    //     // Second - Verifying if the value of role is admin
+    //     if (role === "Admin") {
+    //         // Finds the user with the id
+    //         await User.findById(id)
+    //             .then((user) => {
+    //                 // Third - Verifies the user is not an admin
+    //                 console.log('User has been found')
+    //                 if (user.role !== "Admin") {
+    //                     user.role = role;
+    //                     user.save().then((res) => {
+    //                         console.log('User has been saved')
+    //                         return res.status(201).json({ message: "Update successful", user });
+    //                     }).catch(err => {
+    //                         res.status(400).json({ message: "Update not successful", error: err.message });
+    //                         process.exit(1);
+    //                     })
+    //                 } else {
+    //                     res.status(400).json({ message: "User is already an Admin" });
+    //                 }
+    //             })
+    //             .catch((error) => {
+    //                 res.status(400).json({ message: "An error occurred", error: error.message });
+    //             });
+    //     }else{
+    //             res.status(400).json({ message: "Cannot set role" })
+    //     }
+    // } else {
+    //     res.status(400).json({ message: "Role or Id not present" })
+    // }
+
+    try{
+        if (!role || !id) {
+            throw new Error('Role or Id not present')
         }
-    } else {
-        res.status(400).json({ message: "Role or Id not present" })
+
+        if(role === 'Admin'){
+            const user = await User.findById(id);
+            if (user.role !== "Admin") {
+                user.role = role;
+                await user.save()
+                res.status(201).json({ message: "Update successful", user });
+            } else {
+                // res.status(400).json({ message: "User is already an Admin" });
+                throw new Error('User is already an Admin')
+            }
+        }else{
+            throw new Error('Cannot set role')
+        }
+
+    }catch(err){
+        res.status(400).json({ message: err })
+
     }
 }
 
