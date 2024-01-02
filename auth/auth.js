@@ -365,37 +365,6 @@ exports.updatePassword = async (req, res, next) => {
 exports.updateRole = async (req, res, next) => {
     const { id, role } = req.body;
     console.log(req.body)
-    // First - Verifying if role and id is presnt
-    // if (role && id) {
-    //     // Second - Verifying if the value of role is admin
-    //     if (role === "Admin") {
-    //         // Finds the user with the id
-    //         await User.findById(id)
-    //             .then((user) => {
-    //                 // Third - Verifies the user is not an admin
-    //                 console.log('User has been found')
-    //                 if (user.role !== "Admin") {
-    //                     user.role = role;
-    //                     user.save().then((res) => {
-    //                         console.log('User has been saved')
-    //                         return res.status(201).json({ message: "Update successful", user });
-    //                     }).catch(err => {
-    //                         res.status(400).json({ message: "Update not successful", error: err.message });
-    //                         process.exit(1);
-    //                     })
-    //                 } else {
-    //                     res.status(400).json({ message: "User is already an Admin" });
-    //                 }
-    //             })
-    //             .catch((error) => {
-    //                 res.status(400).json({ message: "An error occurred", error: error.message });
-    //             });
-    //     }else{
-    //             res.status(400).json({ message: "Cannot set role" })
-    //     }
-    // } else {
-    //     res.status(400).json({ message: "Role or Id not present" })
-    // }
 
     try{
         if (!role || !id) {
@@ -409,7 +378,6 @@ exports.updateRole = async (req, res, next) => {
                 await user.save()
                 res.status(201).json({ message: "Update successful", user });
             } else {
-                // res.status(400).json({ message: "User is already an Admin" });
                 throw new Error('User is already an Admin')
             }
         }else{
@@ -418,7 +386,6 @@ exports.updateRole = async (req, res, next) => {
 
     }catch(err){
         res.status(400).json({ message: err })
-
     }
 }
 

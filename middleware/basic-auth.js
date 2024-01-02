@@ -33,6 +33,5 @@ module.exports = (req, res, next) => {
     return res.status(401).json({ message: "Only registered user is allowed" })
   }
   req.userId = decoded._id
-  // req.email = de
   next();
 };
